@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Legacy full-backup-content rules (Android ≤ 11 / API ≤ 31).
+    Referenced via android:fullBackupContent in the manifest (§13 defense-in-depth).
+    allowBackup="false" already disables backup; these rules add explicit exclusions.
+
+    Excludes:
+      - Room database files (smsllm.db, -wal, -shm)
+      - DataStore preferences (settings.preferences_pb)
+      - Downloaded model file (stored in external files dir, excluded by domain)
+-->
+<full-backup-content>
+    <!-- Room database and its WAL/SHM files -->
+    <exclude domain="database" path="smsllm.db" />
+    <exclude domain="database" path="smsllm.db-wal" />
+    <exclude domain="database" path="smsllm.db-shm" />
+
+    <!-- DataStore preferences -->
+    <exclude domain="file" path="datastore/settings.preferences_pb" />
+
+    <!-- External files (model downloads) are not backed up by default,
+         but list the datastore dir under sharedpref for completeness. -->
+    <exclude domain="sharedpref" path="settings.preferences_pb" />
+</full-backup-content>

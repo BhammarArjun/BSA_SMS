@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12+ (API 31+) data-extraction rules (§13 defense-in-depth).
+    Referenced via android:dataExtractionRules in the manifest.
+    Both cloud-backup and device-transfer are restricted.
+
+    Excludes:
+      - Room database files (smsllm.db, -wal, -shm)
+      - DataStore preferences (settings.preferences_pb)
+-->
+<data-extraction-rules>
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <exclude domain="database" path="smsllm.db" />
+        <exclude domain="database" path="smsllm.db-wal" />
+        <exclude domain="database" path="smsllm.db-shm" />
+        <exclude domain="file" path="datastore/settings.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="database" path="smsllm.db" />
+        <exclude domain="database" path="smsllm.db-wal" />
+        <exclude domain="database" path="smsllm.db-shm" />
+        <exclude domain="file" path="datastore/settings.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

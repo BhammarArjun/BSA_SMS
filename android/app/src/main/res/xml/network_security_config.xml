@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Network security configuration (§13).
+
+    Belt-and-suspenders on top of android:usesCleartextTraffic="false" in the manifest.
+    The only outbound network call in this app is the one-time HTTPS model download
+    from huggingface.co (ModelManager).  No cleartext traffic is permitted anywhere.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

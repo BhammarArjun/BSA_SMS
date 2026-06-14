@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -16,6 +17,12 @@ kotlin {
         // can read it. The annotation processors only inspect metadata — runtime behaviour is unaffected.
         freeCompilerArgs.add("-Xmetadata-version=2.2.0")
     }
+}
+
+// ── Signing config: read optional keystore.properties; fall back to debug signing ──
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().also { props ->
+    if (keystorePropsFile.exists()) props.load(keystorePropsFile.inputStream())
 }
 
 android {
@@ -37,9 +44,34 @@ android {
         }
     }
 
+    signingConfigs {
+        // Only define a release signing config when keystore.properties is present.
+        // When absent, the release buildType falls back to signingConfig = signingConfigs.getByName("debug").
+        if (keystorePropsFile.exists()) {
+            create("release") {
+                storeFile = file(keystoreProps["storeFile"] as String)
+                storePassword = keystoreProps["storePassword"] as String
+                keyAlias = keystoreProps["keyAlias"] as String
+                keyPassword = keystoreProps["keyPassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            // Use release keystore when available; otherwise sign with debug key so
+            // `assembleRelease` succeeds for contributors without a keystore.
+            signingConfig = if (keystorePropsFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
