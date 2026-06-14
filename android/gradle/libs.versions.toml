@@ -20,7 +20,7 @@ hilt = "2.56"
 hiltAndroidx = "1.2.0"
 
 # Room
-room = "2.6.1"
+room = "2.7.1"
 
 # WorkManager
 workManager = "2.9.1"
