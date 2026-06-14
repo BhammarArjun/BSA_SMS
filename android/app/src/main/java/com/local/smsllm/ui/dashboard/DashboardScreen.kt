@@ -88,6 +88,20 @@ fun relativeTime(epochMs: Long): String {
     }
 }
 
+/** Human "next run" label for a future epoch-millis, or null when not scheduled. */
+fun nextRunText(epochMs: Long?): String {
+    if (epochMs == null) return "not scheduled"
+    val diffMs = epochMs - System.currentTimeMillis()
+    if (diffMs <= 0L) return "due now"
+    val diffMin = diffMs / 60_000L
+    val diffH = diffMin / 60L
+    return when {
+        diffMin < 1  -> "in <1m"
+        diffMin < 60 -> "in ${diffMin}m"
+        else         -> "in ${diffH}h ${diffMin % 60}m"
+    }
+}
+
 // ── Donut chart palette ─────────────────────────────────────────────────────────
 
 private val DONUT_PALETTE = listOf(
@@ -228,6 +242,7 @@ fun DashboardScreen(
                     StatusStripCard(
                         pending = state.pending,
                         lastRunAt = state.lastRunAt,
+                        nextRunAt = state.nextRunAt,
                         processNowQueued = state.processNowQueued,
                         onProcessNow = viewModel::processNow,
                         modifier = Modifier
@@ -807,6 +822,7 @@ private fun TopCounterpartiesCard(
 private fun StatusStripCard(
     pending: Int,
     lastRunAt: Long,
+    nextRunAt: Long?,
     processNowQueued: Boolean,
     onProcessNow: () -> Unit,
     modifier: Modifier = Modifier,
@@ -838,7 +854,7 @@ private fun StatusStripCard(
                 }
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "Last run: ${relativeTime(lastRunAt)}",
+                    text = "Last run: ${relativeTime(lastRunAt)}  ·  Next: ${nextRunText(nextRunAt)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = OnSurfaceMutedDark,
                 )

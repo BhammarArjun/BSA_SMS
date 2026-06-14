@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 // ── UI State ──────────────────────────────────────────────────────────────────
@@ -23,6 +24,7 @@ data class DashboardUiState(
     val data: DashboardData = EmptyDashboardData,
     val pending: Int = 0,
     val lastRunAt: Long = 0L,
+    val nextRunAt: Long? = null,
     val processNowQueued: Boolean = false,
     val isLoading: Boolean = true,
 )
@@ -43,25 +45,30 @@ class DashboardViewModel @Inject constructor(
     /** Mutable "process queued" confirmation flag — auto-cleared in screen. */
     private val _processNowQueued = MutableStateFlow(false)
 
-    // Pre-combine settings flows so the outer combine stays at ≤5 arguments
+    // Pre-combine settings + schedule flows so the outer combine stays at ≤5 arguments
     // (kotlinx combine only has typed overloads up to 5 flows).
-    private val _settingsMeta = settingsRepo.lastRunAt.combine(settingsRepo.confidenceThreshold) { lastRunAt, threshold ->
-        lastRunAt to threshold
+    private val _meta = combine(
+        settingsRepo.lastRunAt,
+        settingsRepo.confidenceThreshold,
+        workScheduler.observeNextRunAt(),
+    ) { lastRunAt, threshold, nextRunAt ->
+        DashMeta(lastRunAt, threshold, nextRunAt)
     }
 
     val uiState: StateFlow<DashboardUiState> = combine(
         _period,
         transactionRepo.observeIncluded(),
         smsRepo.countPending(),
-        _settingsMeta,
+        _meta,
         _processNowQueued,
-    ) { period, txns, pending, (lastRunAt, threshold), queued ->
-        val data = aggregate(txns, period, threshold)
+    ) { period, txns, pending, meta, queued ->
+        val data = aggregate(txns, period, meta.threshold)
         DashboardUiState(
             period = period,
             data = data,
             pending = pending,
-            lastRunAt = lastRunAt,
+            lastRunAt = meta.lastRunAt,
+            nextRunAt = meta.nextRunAt,
             processNowQueued = queued,
             isLoading = false,
         )
@@ -76,11 +83,22 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun processNow() {
-        workScheduler.runNow()
         _processNowQueued.update { true }
+        // Process pending now AND reset the periodic timer so the next auto-run is a full
+        // interval from now (reflected by nextRunAt).
+        viewModelScope.launch {
+            workScheduler.processNow()
+        }
     }
 
     fun clearProcessNowQueued() {
         _processNowQueued.update { false }
     }
+
+    /** Intermediate combine bucket — avoids a >5-arg combine. */
+    private data class DashMeta(
+        val lastRunAt: Long,
+        val threshold: Double,
+        val nextRunAt: Long?,
+    )
 }

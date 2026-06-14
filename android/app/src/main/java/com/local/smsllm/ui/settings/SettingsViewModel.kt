@@ -2,13 +2,14 @@ package com.local.smsllm.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkInfo
 import com.local.smsllm.domain.ModelRegistry
 import com.local.smsllm.llm.BackendChoice
 import com.local.smsllm.llm.DownloadProgress
 import com.local.smsllm.llm.ModelManager
 import com.local.smsllm.repo.SettingsRepository
 import com.local.smsllm.repo.TransactionRepository
-import com.local.smsllm.sms.SmsImporter
+import com.local.smsllm.work.ImportWorker
 import com.local.smsllm.work.WorkScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,9 +36,7 @@ data class SettingsUiState(
     val modelReady: Boolean = false,
     val downloadProgress: Float? = null,        // null = idle; 0..1 = in-progress; after Done reset to null
     val downloadError: String? = null,
-    // Import state
-    val importScanned: Int = 0,
-    val importTotal: Int = 0,
+    // Import state (driven by the background ImportWorker's WorkInfo)
     val importRunning: Boolean = false,
     val importResult: String? = null,           // shown after completion
     // Export state
@@ -59,7 +58,6 @@ sealed interface ExportStatus {
 class SettingsViewModel @Inject constructor(
     private val settingsRepo: SettingsRepository,
     private val workScheduler: WorkScheduler,
-    private val smsImporter: SmsImporter,
     private val modelManager: ModelManager,
     private val transactionRepo: TransactionRepository,
 ) : ViewModel() {
@@ -93,8 +91,6 @@ class SettingsViewModel @Inject constructor(
             modelReady = tr.modelReady,
             downloadProgress = tr.downloadProgress,
             downloadError = tr.downloadError,
-            importScanned = tr.importScanned,
-            importTotal = tr.importTotal,
             importRunning = tr.importRunning,
             importResult = tr.importResult,
             exportStatus = tr.exportStatus,
@@ -109,6 +105,28 @@ class SettingsViewModel @Inject constructor(
     init {
         // Check model readiness once on startup.
         _transient.update { it.copy(modelReady = modelManager.isReady(ModelRegistry.QWEN3_0_6B)) }
+
+        // Reflect the background import job's state into the UI (survives leaving this screen).
+        viewModelScope.launch {
+            workScheduler.observeImport().collect { info ->
+                when (info?.state) {
+                    WorkInfo.State.ENQUEUED, WorkInfo.State.RUNNING ->
+                        _transient.update { it.copy(importRunning = true) }
+                    WorkInfo.State.SUCCEEDED -> {
+                        val s = ImportWorker.summaryOf(info.outputData)
+                        _transient.update {
+                            it.copy(
+                                importRunning = false,
+                                importResult = "Imported ${s.inserted} new from last 30 days · ${s.processed} processed",
+                            )
+                        }
+                    }
+                    WorkInfo.State.FAILED, WorkInfo.State.CANCELLED ->
+                        _transient.update { it.copy(importRunning = false, importResult = "Import failed — try again") }
+                    WorkInfo.State.BLOCKED, null -> Unit
+                }
+            }
+        }
     }
 
     // ── Settings actions ──────────────────────────────────────────────────────
@@ -154,20 +172,14 @@ class SettingsViewModel @Inject constructor(
 
     // ── Import action ─────────────────────────────────────────────────────────
 
+    /**
+     * Starts the background import (last 30 days) + processing job. Runs via WorkManager so it
+     * keeps going after the user leaves this screen. State is reflected via [observeImport].
+     */
     fun importInbox() {
         if (_transient.value.importRunning) return
-        viewModelScope.launch {
-            _transient.update { it.copy(importRunning = true, importScanned = 0, importTotal = 0, importResult = null) }
-            val result = smsImporter.importInbox { scanned, total ->
-                _transient.update { it.copy(importScanned = scanned, importTotal = total) }
-            }
-            _transient.update {
-                it.copy(
-                    importRunning = false,
-                    importResult = "Imported ${result.inserted} of ${result.total} (${result.gatePassed} matched)",
-                )
-            }
-        }
+        _transient.update { it.copy(importRunning = true, importResult = null) }
+        workScheduler.runImport()
     }
 
     fun clearImportResult() {
@@ -233,8 +245,6 @@ class SettingsViewModel @Inject constructor(
         val modelReady: Boolean = false,
         val downloadProgress: Float? = null,
         val downloadError: String? = null,
-        val importScanned: Int = 0,
-        val importTotal: Int = 0,
         val importRunning: Boolean = false,
         val importResult: String? = null,
         val exportStatus: ExportStatus = ExportStatus.Idle,

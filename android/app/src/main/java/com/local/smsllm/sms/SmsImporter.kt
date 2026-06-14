@@ -26,12 +26,21 @@ class SmsImporter @Inject constructor(
 
     data class ImportResult(val total: Int, val inserted: Int, val gatePassed: Int)
 
+    companion object {
+        /** Import window: only the most recent [WINDOW_DAYS] days of the inbox are scanned. */
+        const val WINDOW_DAYS = 30
+        private const val WINDOW_MS = WINDOW_DAYS * 24L * 60 * 60 * 1000
+    }
+
     /**
-     * Imports the SMS inbox on [Dispatchers.IO].
+     * Imports the SMS inbox (only messages newer than [sinceMillis], default the last
+     * [WINDOW_DAYS] days) on [Dispatchers.IO]. Inserts raw rows only — no model work; the
+     * inserted PENDING messages are processed by the extraction worker.
      * [onProgress] is called periodically (every 50 rows) with (rowsScanned, totalRows).
      * Returns an [ImportResult] with aggregate counts.
      */
     suspend fun importInbox(
+        sinceMillis: Long = System.currentTimeMillis() - WINDOW_MS,
         onProgress: (imported: Int, total: Int) -> Unit = { _, _ -> },
     ): ImportResult = withContext(Dispatchers.IO) {
         val cursor = context.contentResolver.query(
@@ -41,9 +50,9 @@ class SmsImporter @Inject constructor(
                 Telephony.Sms.Inbox.BODY,
                 Telephony.Sms.Inbox.DATE,
             ),
-            null,
-            null,
-            null,
+            "${Telephony.Sms.Inbox.DATE} >= ?",
+            arrayOf(sinceMillis.toString()),
+            "${Telephony.Sms.Inbox.DATE} DESC",
         )
 
         if (cursor == null) return@withContext ImportResult(0, 0, 0)

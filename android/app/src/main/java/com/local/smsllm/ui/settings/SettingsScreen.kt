@@ -377,12 +377,8 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
                             if (state.importRunning) {
-                                val progressText = if (state.importTotal > 0)
-                                    "${state.importScanned} / ${state.importTotal}"
-                                else
-                                    "Scanning…"
                                 Text(
-                                    text = progressText,
+                                    text = "Importing & processing… runs in the background.",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = OnSurfaceMutedDark,
                                 )
@@ -394,7 +390,7 @@ fun SettingsScreen(
                                 )
                             } else {
                                 Text(
-                                    text = "Scans your SMS inbox and seeds the database.",
+                                    text = "Imports the last 30 days and processes them. Keeps running if you leave this screen.",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = OnSurfaceMutedDark,
                                 )
@@ -420,11 +416,10 @@ fun SettingsScreen(
                         }
                     }
 
-                    // Import progress bar
-                    if (state.importRunning && state.importTotal > 0) {
+                    // Import progress bar (indeterminate — the background job has no live count)
+                    if (state.importRunning) {
                         Spacer(Modifier.height(8.dp))
                         LinearProgressIndicator(
-                            progress = { state.importScanned.toFloat() / state.importTotal },
                             modifier = Modifier.fillMaxWidth(),
                             color = BrandGold,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant,
