@@ -121,7 +121,20 @@ fun AppNav(
                 )
             }
             composable(Routes.DASHBOARD) {
-                DashboardScreen()
+                DashboardScreen(
+                    onTransactionClick = { id ->
+                        navController.navigate(Routes.detail(id))
+                    },
+                    onSeeAll = {
+                        navController.navigate(Routes.TRANSACTIONS) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                )
             }
             composable(Routes.TRANSACTIONS) {
                 TransactionsScreen(
