@@ -27,7 +27,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -35,12 +34,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
+import com.local.smsllm.domain.ExtractionResult
+import com.local.smsllm.llm.BackendChoice
+import com.local.smsllm.llm.BackendSelector
+import com.local.smsllm.llm.LiteRtLmService
+import com.local.smsllm.llm.ModelManager
 import kotlinx.coroutines.launch
 import java.io.File
 
 class MainActivity : ComponentActivity() {
 
-    private val llm = LlmEngine()
+    // Manual construction for the throwaway spike harness — Hilt injection into the Activity
+    // is skipped intentionally; this Activity is a temporary benchmark screen.
+    private val modelManager by lazy { ModelManager(this) }
+    private val backendSelector by lazy { BackendSelector(this) }
+    private val llm by lazy { LiteRtLmService(this, modelManager, backendSelector) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,18 +59,37 @@ class MainActivity : ComponentActivity() {
 
         // Headless benchmark: `am start ... --ez autorun true [--ez gpu true]`
         // Loads the model and runs every sample, logging to Logcat tag "SPIKE".
-        if (intent?.getBooleanExtra("autorun", false) == true) {
+        // Stripped from release builds via BuildConfig.DEBUG.
+        if (BuildConfig.DEBUG && intent?.getBooleanExtra("autorun", false) == true) {
             val useGpu = intent?.getBooleanExtra("gpu", false) == true
+            val backendPref = if (useGpu) BackendChoice.GPU else BackendChoice.CPU
             lifecycleScope.launch {
                 runCatching {
-                    llm.load(modelFile.absolutePath, cacheDir, useGpu)
-                    android.util.Log.i("SPIKE", "LOADED backend=${llm.loadedBackend} loadMs=${llm.loadMs} sizeMB=${modelFile.length() / (1024 * 1024)}")
+                    val t0 = System.currentTimeMillis()
+                    llm.ensureLoaded(backendPref)
+                    val loadMs = System.currentTimeMillis() - t0
+                    android.util.Log.i(
+                        "SPIKE",
+                        "LOADED backend=${llm.loadedBackend()} loadMs=$loadMs sizeMB=${modelFile.length() / (1024 * 1024)}"
+                    )
                     SampleData.SAMPLES.forEachIndexed { i, sms ->
-                        val r = llm.extract(sms)
-                        android.util.Log.i("SPIKE", "SAMPLE#$i genMs=${r.genMs} tokps=%.1f json=%s".format(r.tokensPerSec, r.text.replace("\n", " ")))
+                        val t1 = System.currentTimeMillis()
+                        val result = llm.extract(sms)
+                        val genMs = System.currentTimeMillis() - t1
+                        val approxTokens = (result.raw.length / 4).coerceAtLeast(1)
+                        val tokps = if (genMs > 0) approxTokens * 1000.0 / genMs else 0.0
+                        android.util.Log.i(
+                            "SPIKE",
+                            "SAMPLE#$i genMs=$genMs tokps=%.1f json=%s".format(
+                                tokps,
+                                result.raw.replace("\n", " ")
+                            )
+                        )
                     }
                     android.util.Log.i("SPIKE", "DONE")
-                }.onFailure { android.util.Log.e("SPIKE", "FAIL: ${it.message}", it) }
+                }.onFailure {
+                    android.util.Log.e("SPIKE", "FAIL: ${it.message}", it)
+                }
             }
         }
 
@@ -72,25 +99,21 @@ class MainActivity : ComponentActivity() {
                     modelPath = modelFile.absolutePath,
                     modelExists = modelFile.exists(),
                     modelSizeMb = if (modelFile.exists()) modelFile.length() / (1024 * 1024) else 0,
-                    onLoad = { useGpu, onResult ->
+                    onLoad = { backendPref, onResult ->
                         lifecycleScope.launch {
-                            runCatching { llm.load(modelFile.absolutePath, cacheDir, useGpu) }
-                                .onSuccess { onResult("Model loaded on ${llm.loadedBackend} in ${llm.loadMs} ms", true) }
+                            val t0 = System.currentTimeMillis()
+                            runCatching { llm.ensureLoaded(backendPref) }
+                                .onSuccess {
+                                    val loadMs = System.currentTimeMillis() - t0
+                                    onResult("Model loaded on ${llm.loadedBackend()} in $loadMs ms", true)
+                                }
                                 .onFailure { onResult("LOAD ERROR: ${it.message}", false) }
                         }
                     },
                     onRun = { sms, onResult ->
                         lifecycleScope.launch {
                             runCatching { llm.extract(sms) }
-                                .onSuccess { r ->
-                                    onResult(
-                                        buildString {
-                                            appendLine(r.text)
-                                            appendLine()
-                                            appendLine("— gen ${r.genMs} ms · ~${r.approxTokens} tok · ~%.1f tok/s".format(r.tokensPerSec))
-                                        }
-                                    )
-                                }
+                                .onSuccess { result -> onResult(formatResult(result)) }
                                 .onFailure { onResult("RUN ERROR: ${it.message}") }
                         }
                     },
@@ -103,6 +126,17 @@ class MainActivity : ComponentActivity() {
         llm.close()
         super.onDestroy()
     }
+
+    private fun formatResult(result: ExtractionResult): String = buildString {
+        appendLine(result.raw)
+        appendLine()
+        appendLine("— transaction=${result.isTransaction}")
+        if (result.isTransaction) {
+            appendLine("  direction=${result.direction} amount=${result.amount} ${result.currency}")
+            appendLine("  date=${result.dateText} counterparty=${result.counterparty}")
+            appendLine("  category=${result.category} confidence=${"%.2f".format(result.confidence)}")
+        }
+    }
 }
 
 @Composable
@@ -110,7 +144,7 @@ private fun SpikeScreen(
     modelPath: String,
     modelExists: Boolean,
     modelSizeMb: Long,
-    onLoad: (useGpu: Boolean, onResult: (String, Boolean) -> Unit) -> Unit,
+    onLoad: (backendPref: BackendChoice, onResult: (String, Boolean) -> Unit) -> Unit,
     onRun: (sms: String, onResult: (String) -> Unit) -> Unit,
 ) {
     var status by remember { mutableStateOf(if (modelExists) "Model file found (${modelSizeMb} MB)." else "MODEL MISSING — adb push it first.") }
@@ -123,7 +157,7 @@ private fun SpikeScreen(
     LaunchedEffect(modelExists) {
         if (modelExists && !loaded && !busy) {
             busy = true; status = "Auto-loading model on CPU…"
-            onLoad(false) { msg, ok -> status = msg; loaded = ok; busy = false }
+            onLoad(BackendChoice.CPU) { msg, ok -> status = msg; loaded = ok; busy = false }
         }
     }
 
@@ -148,16 +182,23 @@ private fun SpikeScreen(
                     enabled = modelExists && !busy,
                     onClick = {
                         busy = true; loaded = false; status = "Loading on CPU…"
-                        onLoad(false) { msg, ok -> status = msg; loaded = ok; busy = false }
+                        onLoad(BackendChoice.CPU) { msg, ok -> status = msg; loaded = ok; busy = false }
                     },
                 ) { Text("Load CPU") }
                 OutlinedButton(
                     enabled = modelExists && !busy,
                     onClick = {
                         busy = true; loaded = false; status = "Loading on GPU…"
-                        onLoad(true) { msg, ok -> status = msg; loaded = ok; busy = false }
+                        onLoad(BackendChoice.GPU) { msg, ok -> status = msg; loaded = ok; busy = false }
                     },
                 ) { Text("Load GPU") }
+                OutlinedButton(
+                    enabled = modelExists && !busy,
+                    onClick = {
+                        busy = true; loaded = false; status = "Loading AUTO (NPU→GPU→CPU)…"
+                        onLoad(BackendChoice.AUTO) { msg, ok -> status = msg; loaded = ok; busy = false }
+                    },
+                ) { Text("Load AUTO") }
             }
 
             Text("Sample SMS", fontWeight = FontWeight.SemiBold)
