@@ -31,8 +31,17 @@ datastore = "1.1.1"
 # Serialization
 serializationJson = "1.7.3"
 
+# Navigation Compose
+navigationCompose = "2.8.9"
+
+# Lifecycle ViewModel/Runtime Compose
+lifecycleViewmodelCompose = "2.8.6"
+
 # Vico charts
 vico = "2.0.3"
+
+# Material icons extended (in Compose BOM, no separate version needed)
+# material-icons-extended is sourced from the BOM
 
 # Material
 material = "1.12.0"
@@ -74,6 +83,14 @@ datastore-preferences = { module = "androidx.datastore:datastore-preferences", v
 
 # Serialization
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serializationJson" }
+
+# Navigation Compose
+androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
+androidx-hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", version = "1.2.0" }
+
+# Lifecycle ViewModel / Runtime Compose
+androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycleViewmodelCompose" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycleViewmodelCompose" }
 
 # Vico charts
 vico-compose-m3 = { module = "com.patrykandpatrick.vico:compose-m3", version.ref = "vico" }
