@@ -31,6 +31,15 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".sms.SmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Disable the default WorkManager initializer so HiltWorkerFactory from App.kt is used. -->
         <provider
             android:name="androidx.startup.InitializationProvider"
