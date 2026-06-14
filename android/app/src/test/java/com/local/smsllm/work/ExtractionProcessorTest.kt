@@ -256,6 +256,14 @@ private class FakeTransactionDao : TransactionDao {
     override suspend fun setCategory(id: Long, category: String?, now: Long): Int = 1
     override suspend fun setIncluded(id: Long, included: Boolean, now: Long): Int = 1
     override suspend fun markUserEdited(id: Long, now: Long): Int = 1
+    override suspend fun editFields(
+        id: Long,
+        direction: String?,
+        amount: Double?,
+        dateText: String?,
+        counterparty: String?,
+        now: Long,
+    ): Int = 1
 }
 
 private class FakeLlmService : LlmService {

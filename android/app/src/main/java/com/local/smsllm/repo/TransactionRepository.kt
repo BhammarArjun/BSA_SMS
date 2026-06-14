@@ -68,4 +68,13 @@ class TransactionRepository @Inject constructor(private val dao: TransactionDao)
 
     suspend fun markUserEdited(id: Long, now: Long) =
         dao.markUserEdited(id, now)
+
+    suspend fun editFields(
+        id: Long,
+        direction: String?,
+        amount: Double?,
+        dateText: String?,
+        counterparty: String?,
+        now: Long,
+    ) = dao.editFields(id, direction, amount, dateText, counterparty, now)
 }

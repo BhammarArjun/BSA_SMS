@@ -78,4 +78,19 @@ interface TransactionDao {
         "UPDATE transactions SET userEdited = 1, updatedAt = :now WHERE id = :id",
     )
     suspend fun markUserEdited(id: Long, now: Long): Int
+
+    @Query(
+        "UPDATE transactions " +
+            "SET direction = :direction, amount = :amount, dateText = :dateText, " +
+            "counterparty = :counterparty, userEdited = 1, updatedAt = :now " +
+            "WHERE id = :id",
+    )
+    suspend fun editFields(
+        id: Long,
+        direction: String?,
+        amount: Double?,
+        dateText: String?,
+        counterparty: String?,
+        now: Long,
+    ): Int
 }
