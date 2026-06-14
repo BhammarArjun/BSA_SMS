@@ -21,6 +21,8 @@ class TransactionRepository @Inject constructor(private val dao: TransactionDao)
 
     fun byCategory(): Flow<List<CategorySum>> = dao.byCategory()
 
+    suspend fun getBySmsId(smsId: Long): TransactionEntity? = dao.getBySmsId(smsId)
+
     suspend fun upsertFromExtraction(
         smsId: Long,
         isTransaction: Boolean,
@@ -39,26 +41,66 @@ class TransactionRepository @Inject constructor(private val dao: TransactionDao)
         createdAt: Long,
         updatedAt: Long,
     ): Long {
+        // Re-verify: if an existing row was user-edited, preserve the user's fields and keep
+        // userEdited=true. Only model-provenance fields are refreshed from the new extraction.
+        val existing = dao.getBySmsId(smsId)
+        val (mergedDirection, mergedAmount, mergedDateText, mergedCounterparty, mergedCategory,
+            mergedUserEdited, mergedIncludedInAnalytics) =
+            if (existing != null && existing.userEdited) {
+                // User's edits win for user-facing fields; model provenance always updates.
+                // includedInAnalytics is also preserved when the user has edited the row.
+                UserEditedFields(
+                    direction = existing.direction,
+                    amount = existing.amount,
+                    dateText = existing.dateText,
+                    counterparty = existing.counterparty,
+                    category = existing.category,
+                    userEdited = true,
+                    includedInAnalytics = existing.includedInAnalytics,
+                )
+            } else {
+                UserEditedFields(
+                    direction = direction,
+                    amount = amount,
+                    dateText = dateText,
+                    counterparty = counterparty,
+                    category = category,
+                    userEdited = false,
+                    includedInAnalytics = includedInAnalytics,
+                )
+            }
+
         val entity = TransactionEntity(
             smsId = smsId,
             isTransaction = isTransaction,
-            direction = direction,
-            amount = amount,
+            direction = mergedDirection,
+            amount = mergedAmount,
             currency = currency,
-            dateText = dateText,
+            dateText = mergedDateText,
             dateEpoch = dateEpoch,
-            counterparty = counterparty,
-            category = category,
+            counterparty = mergedCounterparty,
+            category = mergedCategory,
             confidence = confidence,
             rawModelOutput = rawModelOutput,
             modelId = modelId,
             backend = backend,
-            includedInAnalytics = includedInAnalytics,
+            userEdited = mergedUserEdited,
+            includedInAnalytics = mergedIncludedInAnalytics,
             createdAt = createdAt,
             updatedAt = updatedAt,
         )
         return dao.upsert(entity)
     }
+
+    private data class UserEditedFields(
+        val direction: String?,
+        val amount: Double?,
+        val dateText: String?,
+        val counterparty: String?,
+        val category: String?,
+        val userEdited: Boolean,
+        val includedInAnalytics: Boolean,
+    )
 
     suspend fun setCategory(id: Long, category: String?, now: Long) =
         dao.setCategory(id, category, now)

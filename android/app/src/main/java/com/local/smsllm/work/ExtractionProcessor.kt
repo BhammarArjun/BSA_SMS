@@ -70,7 +70,7 @@ class ExtractionProcessor @Inject constructor(
                     txnRepo.upsertFromExtraction(
                         smsId = msg.id,
                         isTransaction = result.isTransaction,
-                        direction = result.direction?.name,
+                        direction = result.direction?.name?.lowercase(),
                         amount = result.amount,
                         currency = result.currency,
                         dateText = result.dateText,
@@ -85,7 +85,6 @@ class ExtractionProcessor @Inject constructor(
                         createdAt = msgNow,
                         updatedAt = msgNow,
                     )
-                    // TODO(reverify): preserve userEdited category on re-verify pass
                     smsRepo.setStatus(
                         id = msg.id,
                         status = if (result.isTransaction) ProcessingStatus.PROCESSED else ProcessingStatus.NON_TXN,
