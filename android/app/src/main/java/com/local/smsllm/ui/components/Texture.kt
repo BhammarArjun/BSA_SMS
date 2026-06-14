@@ -7,11 +7,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.graphics.Bitmap
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.ImageShader
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.local.smsllm.ui.theme.CreditGreen
@@ -22,29 +28,43 @@ import kotlin.random.Random
 
 /**
  * Draws a subtle static noise grain texture over its content.
- * Performance note: the noise is generated once and cached per size — safe on budget phones.
+ *
+ * A small [GRAIN_TILE_PX]² noise tile is generated once and tiled across the surface with a
+ * repeating shader, so the per-frame cost is a single [drawRect] regardless of screen size.
+ * (An earlier version drew one circle per ~quarter of *every* screen pixel — hundreds of
+ * thousands of draws and allocations per frame — which stalled the very first frame on real
+ * devices and showed a permanent black screen.)
  *
  * @param alpha   Opacity of the grain (0.02–0.06 is typical; higher = grittier).
- * @param density Fraction of pixels that get a noise dot (0.0–1.0).
+ * @param density Fraction of tile pixels that get a noise dot (0.0–1.0).
  */
 fun Modifier.grainOverlay(
     alpha: Float = 0.035f,
     density: Float = 0.25f,
 ): Modifier = this.drawWithCache {
-    // Pre-generate grain dots for this size — cached until size changes.
-    val totalPixels = (size.width * size.height * density).toInt()
-    val rng = Random(seed = 0x4C4544)  // fixed seed → stable across recompositions
-    val dots = Array(totalPixels) {
-        Offset(
-            x = rng.nextFloat() * size.width,
-            y = rng.nextFloat() * size.height,
-        )
-    }
+    // Tile is independent of size, so this only rebuilds when the modifier's size changes.
+    val brush = ShaderBrush(
+        ImageShader(buildGrainTile(alpha, density), TileMode.Repeated, TileMode.Repeated),
+    )
     onDrawWithContent {
         drawContent()
-        val grainColor = Color.White.copy(alpha = alpha)
-        dots.forEach { dot -> drawCircle(color = grainColor, radius = 0.6f, center = dot) }
+        drawRect(brush = brush)
     }
+}
+
+private const val GRAIN_TILE_PX = 96
+
+/** Builds a small ARGB noise tile: [density] of pixels are white at [alpha], the rest transparent. */
+private fun buildGrainTile(alpha: Float, density: Float): ImageBitmap {
+    val rng = Random(seed = 0x4C4544) // fixed seed → identical grain every build
+    val grain = Color.White.copy(alpha = alpha).toArgb()
+    val bitmap = Bitmap.createBitmap(GRAIN_TILE_PX, GRAIN_TILE_PX, Bitmap.Config.ARGB_8888)
+    for (y in 0 until GRAIN_TILE_PX) {
+        for (x in 0 until GRAIN_TILE_PX) {
+            if (rng.nextFloat() < density) bitmap.setPixel(x, y, grain)
+        }
+    }
+    return bitmap.asImageBitmap()
 }
 
 // ── Hero radial glow ──────────────────────────────────────────────────────────
