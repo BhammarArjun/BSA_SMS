@@ -1,0 +1,17 @@
+# Normalize line endings
+* text=auto eol=lf
+*.bat text eol=crlf
+
+# Treat these as binary (never diff/merge)
+*.litertlm binary
+*.task binary
+*.gguf binary
+*.tflite binary
+*.keystore binary
+*.jks binary
+*.png binary
+*.jpg binary
+*.apk binary
+
+# Gradle wrapper jar is binary
+gradle/wrapper/gradle-wrapper.jar binary

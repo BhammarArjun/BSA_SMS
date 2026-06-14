@@ -1,0 +1,49 @@
+# ── Android / Gradle ─────────────────────────────────────────
+*.iml
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+output.json
+
+# Machine-specific — never commit (contains local SDK path)
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.hprof
+.navigation/
+freeline.py
+freeline/
+freeline_project_description.json
+
+# Kotlin
+.kotlin/
+
+# ── Signing secrets — NEVER commit ───────────────────────────
+*.keystore
+*.jks
+keystore.properties
+release.keystore
+*.p12
+
+# ── Models (downloaded at runtime, hundreds of MB) ───────────
+*.litertlm
+*.task
+*.gguf
+*.tflite
+
+# ── OS / editor cruft ────────────────────────────────────────
+.DS_Store
+*.swp
+*~
+.vscode/
+
+# Keep the Gradle wrapper jar tracked (do NOT ignore):
+!gradle/wrapper/gradle-wrapper.jar
