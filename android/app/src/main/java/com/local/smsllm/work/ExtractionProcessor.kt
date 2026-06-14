@@ -93,7 +93,9 @@ class ExtractionProcessor @Inject constructor(
                         error = null,
                     )
                     processed++
-                } catch (t: Throwable) {
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e            // never swallow structured cancellation
+                } catch (t: Exception) {
                     errors++
                     // Log the error type but NOT the message body or extraction output (§13)
                     Log.w(TAG, "Extraction failed for smsId=${msg.id}: ${t.javaClass.simpleName}")
@@ -101,7 +103,7 @@ class ExtractionProcessor @Inject constructor(
                         id = msg.id,
                         status = ProcessingStatus.ERROR,
                         processedAt = null,
-                        error = t.message?.take(200),
+                        error = t.javaClass.simpleName.take(200),
                     )
                     // Continue to next message — one failure must not abort the batch
                 }

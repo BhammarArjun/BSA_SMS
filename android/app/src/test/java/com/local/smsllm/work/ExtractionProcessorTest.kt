@@ -148,15 +148,36 @@ class ExtractionProcessorTest {
     }
 
     @Test
-    fun `runOnce stores error message for failed message`() = runTest {
+    fun `runOnce stores error class name (not message) for failed message`() = runTest {
         fakeSmsDao.pendingMessages = listOf(smsEntity(id = 20L))
-        fakeLlm.extractAction = { throw RuntimeException("bad parse") }
+        fakeLlm.extractAction = { throw RuntimeException("bad parse - contains SMS body") }
 
         processor.runOnce()
 
         val (status, error) = fakeSmsDao.statusUpdates[20L]!!
         assertEquals(ProcessingStatus.ERROR, status)
-        assertTrue(error?.contains("bad parse") == true)
+        // §13 privacy: only the exception class name is stored, never the message (which could echo SMS content)
+        assertEquals("RuntimeException", error)
+        assertFalse("error must NOT contain the exception message text", error?.contains("bad parse") == true)
+    }
+
+    // --- ensureLoaded failure propagation ---
+
+    @Test
+    fun `runOnce propagates exception from ensureLoaded without calling close`() = runTest {
+        fakeSmsDao.pendingMessages = listOf(smsEntity(id = 40L))
+        fakeLlm.ensureLoadedThrows = RuntimeException("model load failed")
+
+        val thrownException = runCatching { processor.runOnce() }.exceptionOrNull()
+
+        // The exception must propagate so the worker can schedule a retry
+        assertEquals(
+            "Expected ensureLoaded exception to propagate",
+            "model load failed",
+            thrownException?.message,
+        )
+        // Nothing was loaded, so nothing needs to be closed
+        assertFalse("close must NOT be called when ensureLoaded throws", fakeLlm.closeCalled)
     }
 
     @Test
@@ -240,6 +261,7 @@ private class FakeTransactionDao : TransactionDao {
 private class FakeLlmService : LlmService {
     var ensureLoadedCalled = false
     var closeCalled = false
+    var ensureLoadedThrows: Exception? = null
     var extractResult: ExtractionResult = ExtractionResult(
         isTransaction = true, direction = null, amount = 100.0,
         currency = "INR", dateText = null, counterparty = null,
@@ -248,6 +270,7 @@ private class FakeLlmService : LlmService {
     var extractAction: (() -> ExtractionResult)? = null
 
     override suspend fun ensureLoaded(pref: BackendChoice) {
+        ensureLoadedThrows?.let { throw it }
         ensureLoadedCalled = true
     }
 

@@ -23,7 +23,9 @@ class ExtractionWorker @AssistedInject constructor(
         return try {
             processor.runOnce()
             Result.success()
-        } catch (t: Throwable) {
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e            // never swallow structured cancellation
+        } catch (e: Exception) {
             // Transient model-load failures are retried; other unexpected errors surface as failure.
             Result.retry()
         }
